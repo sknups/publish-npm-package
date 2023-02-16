@@ -1,0 +1,64 @@
+---
+name: Build
+
+'on': workflow_call
+
+jobs:
+
+  build:
+
+    name: 'Build'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Execute ShellCheck
+        uses: ludeeus/action-shellcheck@master
+
+      - name: Execute YAMLlint
+        run: |
+          yamllint .
+
+      - name: Install Node.js v16
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          cache: 'npm'
+
+      - name: Configure npm
+        run: |
+          npm config set update-notifier false
+          npm config set audit false
+          npm config set fund false
+
+      - name: Authenticate Google Cloud
+        id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_DEV_DRM_SA_KEY }}'
+          export_environment_variables: false
+
+      - name: Authenticate Artifact Registry
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: |
+          npm run auth
+
+      - name: Install npm dependencies
+        run: |
+          npm ci
+
+      - name: Execute ESLint
+        run: |
+          npm run lint
+
+      - name: Execute Typescript compiler
+        run: |
+          npm run compile
+
+      - name: Execute Jest
+        run: |
+          npm test
