@@ -1,0 +1,98 @@
+---
+name: 'Publish npm package'
+description: 'Publishes npm package to private Artifact Registry, using snapshot versioning'
+
+inputs:
+  service-account-key-json:
+    description: 'long-lived JSON service account key'
+    required: true
+
+runs:
+  using: composite
+  steps:
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Check preconditions
+      id: 'preconditions'
+      shell: bash
+      run: |
+        PACKAGE_VERSION=$(jq '.version' -r package.json)
+        if [ "$PACKAGE_VERSION" != "0.0.1-snapshot" ] ; then
+          LINE=$(grep -n '"version":' package.json | cut -d: -f1)
+          echo "::error file=package.json,line=${LINE}::Package version must always be \"0.0.1-snapshot\" in source control." >> /dev/stderr
+          exit 1
+        fi
+        PACKAGE_PRIVATE=$(jq '.private' -r package.json)
+        if [ "$PACKAGE_PRIVATE" == "true" ] ; then
+          LINE=$(grep -n '"private":' package.json | cut -d: -f1)
+          echo "SHOULD_PUBLISH=false" >> $GITHUB_OUTPUT
+          echo "::warning file=package.json,line=${LINE}::Package is marked private, so will not be published" >> /dev/stderr
+        else
+          echo "SHOULD_PUBLISH=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Install Node.js v16
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+
+    - name: Configure npm
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      shell: bash
+      run: |
+        npm config set update-notifier false
+        npm config set audit false
+        npm config set fund false
+
+    # https://github.com/google-github-actions/auth#with-service-account-key-json
+    - name: Authenticate Google Cloud
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      id: 'auth'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        credentials_json: '${{ inputs.service-account-key-json }}'
+        export_environment_variables: false
+
+    - name: Authenticate Artifact Registry
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+      shell: bash
+      run: |
+        npm run auth
+
+    - name: Set SNAPSHOT version
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true' && startsWith(github.ref, 'refs/heads')
+      shell: bash
+      run: |
+        sed -i "s/0.0.1-snapshot/0.0.1-snapshot.$(git log -1 --format=%ct)/" package.json
+
+    - name: Set RELEASE version
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true' && startsWith(github.ref, 'refs/tags')
+      shell: bash
+      run: |
+        sed -i "s/0.0.1-snapshot/${GITHUB_REF_NAME#v}/" package.json
+
+    - name: Install npm dependencies
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      shell: bash
+      run: |
+        npm ci
+
+    - name: Publish npm package
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      shell: bash
+      run: |
+        npm publish
+
+    - name: Set job summary
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
+      shell: bash
+      run: |
+        PACKAGE_NAME=$(jq '.name' -r package.json)
+        PACKAGE_VERSION=$(jq '.version' -r package.json)
+        echo "Published \`${PACKAGE_NAME}\` version \`${PACKAGE_VERSION}\` to Artifact Registry" >> $GITHUB_STEP_SUMMARY

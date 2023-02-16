@@ -37,36 +37,6 @@ alias echo="echo -e"
 # FUNCTIONS                                                                   #
 ###############################################################################
 
-function parse_arguments {
-
-  if [ "$#" -gt 1 ]; then
-    print_usage
-  fi
-
-  OFFLINE="false"
-
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      --offline)
-        OFFLINE="true"
-        shift
-        ;;
-      *)
-        echo "Unknown option $1"
-        print_usage
-        ;;
-    esac
-  done
-
-}
-
-function print_usage {
-
-  echo "./build.sh [--offline]"
-  exit ${FAILURE}
-
-}
-
 function build {
 
   echo "Checking shell scripts..."
@@ -84,37 +54,6 @@ function build {
   do
     yamllint -s "${YAML}" || error
   done
-
-  if ! [[ $(command -v node) ]] ; then
-    error "Node.js must be installed!"
-  fi
-
-  echo "Configuring npm..."
-  npm config set update-notifier false || error
-  npm config set audit false || error
-  npm config set fund false || error
-
-  if [[ "${OFFLINE}" == "false" ]] ; then
-
-    echo "Authenticating npm..."
-    npm run auth --silent || error
-
-    echo "Installing npm dependencies..."
-    npm install --silent || error
-
-  fi
-
-  echo "Running eslint..."
-  npm run lint --silent || error
-
-  echo "Running Typescript compiler..."
-  npm run compile --silent || error
-
-  echo "Running Jest..."
-  npm run test --silent || error
-
-  echo "Sorting package.json ..."
-  npx sort-package-json || error
 
 }
 
@@ -205,7 +144,6 @@ trap abort INT
 # Execute from the root of our Git repository
 cd "$(dirname "$0")"
 
-parse_arguments "$@"
 build
 
 success
