@@ -6,6 +6,10 @@ inputs:
   service-account-key-json:
     description: 'long-lived JSON service account key'
     required: true
+  run-compile:
+    description: 'run typescript compiler via compile script'
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -82,6 +86,12 @@ runs:
       shell: bash
       run: |
         npm ci
+
+    - name: Execute Typescript compiler
+      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true' && inputs.run-compile == 'true'
+      shell: bash
+      run: |
+        npm run compile
 
     - name: Publish npm package
       if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
