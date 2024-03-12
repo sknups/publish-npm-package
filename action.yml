@@ -1,6 +1,6 @@
 ---
 name: 'Publish npm package'
-description: 'Publishes npm package to private Artifact Registry, using snapshot versioning'
+description: 'Publishes npm packages to Google Cloud Artifact Registry'
 
 inputs:
   credentials_file_path:
@@ -12,7 +12,6 @@ runs:
   steps:
 
     - name: Check preconditions
-      id: 'preconditions'
       shell: bash
       run: |
         PACKAGE_VERSION=$(jq '.version' -r package.json)
@@ -24,14 +23,11 @@ runs:
         PACKAGE_PRIVATE=$(jq '.private' -r package.json)
         if [ "$PACKAGE_PRIVATE" == "true" ] ; then
           LINE=$(grep -n '"private":' package.json | cut -d: -f1)
-          echo "SHOULD_PUBLISH=false" >> $GITHUB_OUTPUT
-          echo "::warning file=package.json,line=${LINE}::Package is marked private, so will not be published" >> /dev/stderr
-        else
-          echo "SHOULD_PUBLISH=true" >> $GITHUB_OUTPUT
+          echo "::error file=package.json,line=${LINE}::Package is marked private, so cannot be published" >> /dev/stderr
+          exit 1
         fi
 
     - name: Authenticate Artifact Registry
-      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ inputs.credentials-file-path }}
       shell: bash
@@ -39,25 +35,23 @@ runs:
         npx google-artifactregistry-auth
 
     - name: Set SNAPSHOT version
-      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true' && startsWith(github.ref, 'refs/heads')
+      if: startsWith(github.ref, 'refs/heads')
       shell: bash
       run: |
         npm version 0.0.1-snapshot.$(git log -1 --format=%ct) --no-git-tag-version
 
     - name: Set RELEASE version
-      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true' && startsWith(github.ref, 'refs/tags')
+      if: startsWith(github.ref, 'refs/tags')
       shell: bash
       run: |
         npm version ${GITHUB_REF_NAME#v} --no-git-tag-version
 
     - name: Publish npm package
-      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
       shell: bash
       run: |
         npm publish
 
     - name: Set job summary
-      if: steps.preconditions.outputs.SHOULD_PUBLISH == 'true'
       shell: bash
       run: |
         PACKAGE_NAME=$(jq '.name' -r package.json)
