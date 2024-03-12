@@ -7,6 +7,14 @@ inputs:
     description: 'Path to GCP credentials file'
     required: true
 
+outputs:
+  name:
+    description: 'The published name of the package'
+    value: ${{ steps.publish.outputs.name}}
+  version:
+    description: 'The published package version'
+    value: ${{ steps.publish.outputs.version}}
+
 runs:
   using: composite
   steps:
@@ -47,13 +55,14 @@ runs:
         npm version ${GITHUB_REF_NAME#v} --no-git-tag-version
 
     - name: Publish npm package
+      id: 'publish'
       shell: bash
       run: |
         npm publish
+        echo "version=$(jq '.version' -r package.json)" >> $GITHUB_OUTPUT
+        echo "name=$(jq '.name' -r package.json)" >> $GITHUB_OUTPUT
 
     - name: Set job summary
       shell: bash
       run: |
-        PACKAGE_NAME=$(jq '.name' -r package.json)
-        PACKAGE_VERSION=$(jq '.version' -r package.json)
-        echo "Published \`${PACKAGE_NAME}\` version \`${PACKAGE_VERSION}\` to Artifact Registry" >> $GITHUB_STEP_SUMMARY
+        echo "Published \`${{ steps.publish.outputs.name}}\` version \`${{ steps.publish.outputs.version }}\` to Artifact Registry" >> $GITHUB_STEP_SUMMARY
