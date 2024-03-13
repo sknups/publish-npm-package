@@ -19,6 +19,8 @@ version, e.g.
 
 The suffix is the epoch time (in seconds) of the Git commit.
 
+We recommend only using this Action on the `main` branch.
+
 ### tags
 
 If this Action is run from a Git tag, it will publish an npm package with using the tag name as the version number, e.g.
